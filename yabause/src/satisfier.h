@@ -61,6 +61,7 @@ typedef enum {
     c_mkdir,
     c_opendir,
     c_readdir,
+    c_chdir,
 } satisfier_cmd_t;
 
 #endif // _SATISFIER_H

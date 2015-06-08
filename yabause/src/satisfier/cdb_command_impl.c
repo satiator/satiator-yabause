@@ -37,6 +37,13 @@ static void free_handle(int8_t handle) {
 }
 // }}}
 
+typedef struct {
+    uint32_t size;
+    uint16_t date, time;
+    uint8_t attr;
+    char name[];
+} __attribute__((packed)) s_stat_t;
+
 static uint8_t buffer[2049];
 uint16_t cdb_buf[5];
 
@@ -83,6 +90,10 @@ int cdb_command(void) {
     static UINT nread, nwritten;
     static int bios_len;
     static FIL biosfp;
+    static FILINFO stat;
+    static uint8_t lfname[256];
+    static FF_DIR dir;
+    static s_stat_t *sst;
 
     int cmd;
     setup_cmd();
@@ -158,6 +169,80 @@ int cdb_command(void) {
             read_buf(length);
             result = f_write(f, buffer, length, &nwritten);
             set_length(nwritten);
+            set_status(result);
+            break;
+
+        case c_truncate:
+            if (!f) {
+                set_status(FR_INVALID_OBJECT);
+                break;
+            }
+            result = f_truncate(f);
+            set_length(f_tell(f));
+            set_status(result);
+            break;
+
+        case c_readdir:
+            stat.lfname = lfname;
+            stat.lfsize = sizeof(lfname);
+            result = f_readdir(&dir, &stat);
+            set_status(result);
+            if (result)
+                break;
+            goto return_stat;
+
+        case c_stat:
+            read_filename();
+            stat.lfname = lfname;
+            stat.lfsize = sizeof(lfname);
+            result = f_stat(buffer, &stat);
+            set_status(result);
+            if (result)
+                break;
+return_stat:
+            // 9 bytes as per FILINFO, but with endianness fixed
+            sst = (void*)buffer;
+            sst->size = htonl(stat.fsize);
+            sst->date = htons(stat.fdate);
+            sst->time = htons(stat.ftime);
+            sst->attr = stat.fattrib;
+            // then the filename
+            if (*stat.lfname) {
+                strcpy(sst->name, stat.lfname);
+            } else {
+                strcpy(sst->name, stat.fname);
+            }
+            set_length(9 + strlen(sst->name));
+            break;
+
+        case c_rename:
+            // two filenames, NUL separated
+            read_filename();
+            result = f_rename(buffer, buffer+strlen(buffer)+1);
+            set_status(result);
+            break;
+
+        case c_unlink:
+            read_filename();
+            result = f_unlink(buffer);
+            set_status(result);
+            break;
+
+        case c_mkdir:
+            read_filename();
+            result = f_mkdir(buffer);
+            set_status(result);
+            break;
+
+        case c_opendir:
+            read_filename();
+            result = f_opendir(&dir, buffer);
+            set_status(result);
+            break;
+
+        case c_chdir:
+            read_filename();
+            result = f_chdir(buffer);
             set_status(result);
             break;
 

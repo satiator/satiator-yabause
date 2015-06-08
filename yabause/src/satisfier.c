@@ -107,6 +107,7 @@ int SatisfierExecute(Cs2 * Cs2Area, u16 instruction) {
         case c_mkdir:
         case c_opendir:
         case c_readdir:
+        case c_chdir:
             cdb_buf[0] = Cs2Area->reg.CR1;
             cdb_buf[1] = Cs2Area->reg.CR2;
             cdb_buf[2] = Cs2Area->reg.CR3;

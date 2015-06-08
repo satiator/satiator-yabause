@@ -164,6 +164,8 @@ FRESULT f_readdir (FF_DIR* dp, FILINFO* fno) {
             f_stat(d->d_name, fno);
         } else {
             memset(fno->fname, 0, 13);
+            if (fno->lfname)
+                fno->lfname[0] = 0;
         }
     }
     return F_OK;
@@ -195,8 +197,11 @@ FRESULT f_stat (const TCHAR* path, FILINFO* fno) {
     fno->fsize = st.st_size;    // will overflow if >4gb
     fno->fattrib = 0;
     memcpy(fno->fname, path, 13);  // this does not do 8.3 names!
-    if (fno->lfsize < strlen(path))
-        strcpy(fno->lfname, path);
+    if (fno->lfname) {
+        strncpy(fno->lfname, path, fno->lfsize);
+    }
+    if (st.st_mode & S_IFDIR)
+        fno->fattrib |= AM_DIR;
     // TODO: dates
     return FR_OK;
 }
@@ -206,6 +211,17 @@ FRESULT f_mount (FATFS* fs, const TCHAR* path, BYTE opt) {
         perror("open");
         return FR_NOT_READY;
     } else {
+        return FR_OK;
+    }
+}
+FRESULT f_chdir(const TCHAR* path) {
+    int fd = openat(root_fd, path, O_RDONLY | O_DIRECTORY);
+    if (fd < 0) {
+        perror("open");
+        return errno_status();
+    } else {
+        close(root_fd);
+        root_fd = fd;
         return FR_OK;
     }
 }
