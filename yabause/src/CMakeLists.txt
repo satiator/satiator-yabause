@@ -23,6 +23,7 @@ set(yabause_HEADERS
 set(yabause_SOURCES
 	bios.c
 	cdbase.c cheat.c coffelf.c cs0.c cs1.c cs2.c
+	satisfier.c satisfier/fffake.c
 	debug.c
 	error.c
 	japmodem.c

@@ -155,6 +155,11 @@ u16 FASTCALL Cs2ReadWord(u32 addr) {
     case 0x9002A: return Cs2Area->reg.MPEGRGB;
     case 0x98000:
                   // transfer info
+                  if (Cs2Area->satisfier && Cs2Area->satisfier->dma_remain) {
+                      SATISLOG("DMARW %04X\n", *Cs2Area->satisfier->dma_buf);
+                      Cs2Area->satisfier->dma_remain--;
+                      return htons(*Cs2Area->satisfier->dma_buf++);
+                  }
                   switch (Cs2Area->infotranstype) {
                      case 0:
                              // Get Toc Data
@@ -279,6 +284,13 @@ void FASTCALL Cs2WriteWord(u32 addr, u16 val) {
     case 0x90028:
     case 0x9002A: Cs2Area->reg.MPEGRGB = val;
                   return;
+    case 0x98000:
+                  if (Cs2Area->satisfier && Cs2Area->satisfier->dma_remain) {
+                      Cs2Area->satisfier->dma_remain--;
+                      *Cs2Area->satisfier->dma_buf++ = ntohs(val);
+                      SATISLOG("DMAWW %04X\n", val);
+                      return;
+                  }
     default:
              LOG("cs2\t:Undocumented register write %08X\n", addr);
 //                  T3WriteWord(Cs2Area->mem, addr, val);
@@ -325,6 +337,13 @@ u32 FASTCALL Cs2ReadLong(u32 addr) {
     case 0x90028: return ((Cs2Area->reg.MPEGRGB << 16) | Cs2Area->reg.MPEGRGB);
     case 0x18000:
                   // transfer data
+                  if (Cs2Area->satisfier && Cs2Area->satisfier->dma_remain) {
+                      Cs2Area->satisfier->dma_remain -= 2;
+                      val = htons(*Cs2Area->satisfier->dma_buf++) << 16;
+                      val |= htons(*Cs2Area->satisfier->dma_buf++);
+                      SATISLOG("DMARL %08X\n", val);
+                      return val;
+                  }
                   if (Cs2Area->datatranstype != -1)
                   {
                      // get sector
@@ -390,7 +409,16 @@ u32 FASTCALL Cs2ReadLong(u32 addr) {
 
 //////////////////////////////////////////////////////////////////////////////
 
-void FASTCALL Cs2WriteLong(UNUSED u32 addr, UNUSED u32 val) {
+void FASTCALL Cs2WriteLong(u32 addr, u32 val) {
+    if (addr & 0xfffff == 0x18000) {
+        if (Cs2Area->satisfier && Cs2Area->satisfier->dma_remain) {
+            Cs2Area->satisfier->dma_remain -= 2;
+            *Cs2Area->satisfier->dma_buf++ == ntohs(val>>16);
+            *Cs2Area->satisfier->dma_buf++ == ntohs(val);
+            SATISLOG("DMAWL %08X\n", val);
+            return;
+        }
+    }
    LOG("cs2\t: Long writing isn't implemented\n");
 //   T3WriteLong(Cs2Area->mem, addr, val);
 }
@@ -566,6 +594,8 @@ int Cs2Init(int carttype, int coreid, const char *cdpath, const char *mpegpath, 
 
    if ((ret = Cs2ChangeCDCore(coreid, cdpath)) != 0)
       return ret;
+
+   SatisfierInit(Cs2Area, "/tmp/satisfier");
 
    Cs2Reset();
 
@@ -1016,6 +1046,11 @@ void Cs2Execute(void) {
   u16 instruction = Cs2Area->reg.CR1 >> 8;
 
   Cs2Area->reg.HIRQ &= ~CDB_HIRQ_CMOK;
+
+  if (Cs2Area->satisfier) {
+    if (SatisfierExecute(Cs2Area, instruction) == 0)
+        return;
+  }
 
   switch (instruction) {
     case 0x00:

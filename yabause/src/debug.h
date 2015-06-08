@@ -91,4 +91,10 @@ void LogChangeOutput(DebugOutType t, char * s);
 #define SMPCLOG(...)
 #endif
 
+#ifdef SATIS_DEBUG
+#define SATISLOG(...) DebugPrintf(MainLog, __FILE__, __LINE__, __VA_ARGS__)
+#else
+#define SATISLOG(...)
+#endif
+
 #endif

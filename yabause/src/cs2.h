@@ -24,6 +24,7 @@
 #include "memory.h"
 #include "cdbase.h"
 #include "cs0.h"
+#include "satisfier.h"
 
 #define MAX_BLOCKS      200
 #define MAX_SELECTORS   24
@@ -239,6 +240,8 @@ typedef struct {
 
   int carttype;
   int playtype;  
+
+  satisfier_struct *satisfier;
 } Cs2;
 
 typedef struct {
