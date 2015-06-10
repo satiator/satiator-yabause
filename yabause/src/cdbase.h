@@ -29,10 +29,11 @@
 #include <stdio.h>
 #include "core.h"
 
-#define CDCORE_DEFAULT -1
-#define CDCORE_DUMMY    0
-#define CDCORE_ISO      1
-#define CDCORE_ARCH     2
+#define CDCORE_DEFAULT     -1
+#define CDCORE_DUMMY        0
+#define CDCORE_ISO          1
+#define CDCORE_ARCH         2
+#define CDCORE_SATISFIER    3
 
 typedef struct
 {
@@ -51,5 +52,7 @@ extern CDInterface DummyCD;
 extern CDInterface ISOCD;
 
 extern CDInterface ArchCD;
+
+extern CDInterface SatisfierCD;
 
 #endif
