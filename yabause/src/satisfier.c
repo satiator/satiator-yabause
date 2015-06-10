@@ -40,7 +40,6 @@
 #include "cs2.h"
 #include "satisfier.h"
 #include "debug.h"
-static int command;
 
 // Glue to allow using the raw Satisfier source code for best compatibility
 #define write_bios_sector() // not implemented
@@ -54,6 +53,18 @@ static int command;
     cmd = cdb_buf[0] >> 8;  \
 } while(0)
 
+int SatisfierCDOpenDescriptor(const char *name);
+static satisfier_struct *satisfier = NULL;
+
+void start_emulation(const char *filename) {
+    if (SatisfierCDOpenDescriptor(filename)) {
+        SATISLOG("Failed to open CD descriptor, aborting drive emulation attempt\n");
+        return;
+    }
+
+    // Command interface is disabled on successful emulation start
+    satisfier->active = 0;
+}
 
 #include "satisfier/cdb_command_impl.c"
 
@@ -63,8 +74,7 @@ int SatisfierExecute(Cs2 * Cs2Area, u16 instruction) {
     if (!sat || !sat->active)
         return -1;
 
-    command = instruction;
-    switch (command) {
+    switch (instruction) {
         // I/O glue commands
         case c_get_status:
             Cs2Area->reg.CR1 = cdb_buf[0];
@@ -108,11 +118,12 @@ int SatisfierExecute(Cs2 * Cs2Area, u16 instruction) {
         case c_opendir:
         case c_readdir:
         case c_chdir:
+        case c_emulate:
             cdb_buf[0] = Cs2Area->reg.CR1;
             cdb_buf[1] = Cs2Area->reg.CR2;
             cdb_buf[2] = Cs2Area->reg.CR3;
             cdb_buf[3] = Cs2Area->reg.CR4;
-            SATISLOG("cmd: %02X args: %04X %04X %04X %04X ", command, cdb_buf[0], cdb_buf[1], cdb_buf[2], cdb_buf[3]);
+            SATISLOG("cmd: %04X %04X %04X %04X ", cdb_buf[0], cdb_buf[1], cdb_buf[2], cdb_buf[3]);
 
             cdb_command();
             // TODO: MPED is set by completing commands, in practice after some delay for file I/O
@@ -137,6 +148,7 @@ int SatisfierInit(Cs2 *Cs2Area, const char *basedir) {
     memset(sat, 0, sizeof(*sat));
 
     Cs2Area->satisfier = sat;
+    satisfier = sat;
     sat->basedir = basedir;
     sat->active = 1;  // XXX should be switchable
     if (f_mount(&sat->fatfs, sat->basedir, 1) != FR_OK) {

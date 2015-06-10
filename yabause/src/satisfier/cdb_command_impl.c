@@ -46,6 +46,7 @@ typedef struct {
 
 static uint8_t buffer[2049];
 uint16_t cdb_buf[5];
+extern FIL cdb_descfile;
 
 static uint32_t fat_time = 0;
 DWORD get_fattime(void) {
@@ -259,6 +260,17 @@ return_stat:
 
         case c_settime:
             fat_time = length;
+            break;
+
+        case c_emulate:
+            f_close(&cdb_descfile);
+            read_filename();
+            result = f_open(&cdb_descfile, buffer, FA_READ);
+            set_status(result);
+            cdb_buf[2] = 0x5555;
+            cdb_buf[3] = 0xaaaa;
+            if (result == FR_OK)
+                start_emulation(buffer);
             break;
 
         default:    // unknown cmd

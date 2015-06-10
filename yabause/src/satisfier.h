@@ -62,6 +62,7 @@ typedef enum {
     c_opendir,
     c_readdir,
     c_chdir,
+    c_emulate,
 } satisfier_cmd_t;
 
 // CD image descriptor
