@@ -410,15 +410,44 @@ u32 FASTCALL Cs2ReadLong(u32 addr) {
 //////////////////////////////////////////////////////////////////////////////
 
 void FASTCALL Cs2WriteLong(u32 addr, u32 val) {
-    if (addr & 0xfffff == 0x18000) {
-        if (Cs2Area->satisfier && Cs2Area->satisfier->dma_remain) {
-            Cs2Area->satisfier->dma_remain -= 2;
-            *Cs2Area->satisfier->dma_buf++ == ntohs(val>>16);
-            *Cs2Area->satisfier->dma_buf++ == ntohs(val);
-            SATISLOG("DMAWL %08X\n", val);
-            return;
-        }
-    }
+   block_struct *block;
+
+   if ((addr & 0xfffff) == 0x18000) {
+      if (Cs2Area->satisfier && Cs2Area->satisfier->dma_remain) {
+         Cs2Area->satisfier->dma_remain -= 2;
+         *Cs2Area->satisfier->dma_buf++ == ntohs(val>>16);
+         *Cs2Area->satisfier->dma_buf++ == ntohs(val);
+         SATISLOG("DMAWL %08X\n", val);
+         return;
+      }
+      if (Cs2Area->datatranstype == 3) {
+         Cs2Area->putblock[Cs2Area->datatransoffset/4] = ntohl(val);
+         Cs2Area->cdwnum += 4;
+         Cs2Area->datatransoffset += 4;
+
+         // Make sure we're not beyond the sector size boundry
+         if (Cs2Area->datatransoffset >= Cs2Area->putsectsize)
+         {
+            Cs2Area->datatransoffset = 0;
+            Cs2Area->datanumsecttrans++;
+            block = Cs2AllocateBlock(&Cs2Area->datatranspartition->blocknum[Cs2Area->datatranspartition->numblocks]);
+            if (!block)
+               return;
+            Cs2Area->datatranspartition->block[Cs2Area->datatranspartition->numblocks] = block;
+            block->size = Cs2Area->putsectsize;
+            block->FAD = 0; // ???
+            memcpy(block->data, Cs2Area->putblock, 2352);  // assume getsectsize == putsectsize
+            Cs2Area->datatranspartition->numblocks++;
+            CDLOG("Put sector complete %d/%d sz %d\n", Cs2Area->datanumsecttrans, Cs2Area->datasectstotrans, block->size);
+            Cs2SortBlocks(Cs2Area->datatranspartition);
+
+            if (Cs2Area->datanumsecttrans >= Cs2Area->datasectstotrans)
+               Cs2Area->datatranstype = -1;
+         }
+
+         return;
+      }
+   }
    LOG("cs2\t: Long writing isn't implemented\n");
 //   T3WriteLong(Cs2Area->mem, addr, val);
 }
@@ -2242,20 +2271,27 @@ void Cs2GetThenDeleteSectorData(void)
 //////////////////////////////////////////////////////////////////////////////
 
 void Cs2PutSectorData(void) {
-  u32 psdfiltno;
+   u32 psdbufno, psdsectnum;
 
-  psdfiltno = Cs2Area->reg.CR3 >> 8;
+   psdbufno = Cs2Area->reg.CR3 >> 8;
+   psdsectnum = Cs2Area->reg.CR4;
+   if (psdbufno >= MAX_SELECTORS)
+   {
+      doCDReport(CDB_STAT_REJECT);
+      Cs2Area->reg.HIRQ |= CDB_HIRQ_CMOK | CDB_HIRQ_EHST;
+   }
 
-  if (psdfiltno < MAX_SELECTORS)
-  {
-     // I'm not really sure what I'm supposed to really be doing or returning
-     Cs2Area->reg.HIRQ |= CDB_HIRQ_CMOK | CDB_HIRQ_EHST;
-  }
-  else
-  {
-     doCDReport(CDB_STAT_REJECT);
-     Cs2Area->reg.HIRQ |= CDB_HIRQ_CMOK | CDB_HIRQ_EHST;
-  }
+   Cs2Area->cdwnum = 0;
+   CDLOG("PUT begins\n");
+   Cs2Area->datatranstype = 3;
+   Cs2Area->datatranspartition = Cs2Area->partition + psdbufno;
+   Cs2Area->datatranspartitionnum = (u8)psdbufno;
+   Cs2Area->datatransoffset = 0;
+   Cs2Area->datanumsecttrans = 0;
+   Cs2Area->datatranssectpos = 0;
+   Cs2Area->datasectstotrans = (u16)psdsectnum;
+   doCDReport(Cs2Area->status);
+   Cs2Area->reg.HIRQ |= CDB_HIRQ_CMOK | CDB_HIRQ_DRDY | CDB_HIRQ_EHST;
 }
 
 //////////////////////////////////////////////////////////////////////////////

@@ -202,6 +202,7 @@ typedef struct {
   u32 datanumsecttrans;
   u16 datatranssectpos;
   u16 datasectstotrans;
+  u32 putblock[2448/4];
 
   u32 blockfreespace;
   block_struct block[MAX_BLOCKS];
