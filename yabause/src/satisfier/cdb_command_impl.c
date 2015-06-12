@@ -259,6 +259,8 @@ return_stat:
             read_filename();
             result = f_chdir(buffer);
             set_status(result);
+            f_getcwd(buffer, sizeof(buffer));
+            set_length(strlen(buffer));
             break;
 
 #if _USE_MKFS

@@ -225,6 +225,12 @@ FRESULT f_chdir(const TCHAR* path) {
         return FR_OK;
     }
 }
+
+FRESULT f_getcwd(TCHAR* path, UINT len) {
+    // XXX stub
+    strcpy(path, "XXX");
+}
+
 FRESULT f_mkfs (const TCHAR* path, BYTE sfd, UINT au) {
     // bit dangerous... maybe skip this for now
     return FR_OK;
