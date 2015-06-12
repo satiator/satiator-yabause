@@ -65,6 +65,10 @@ typedef enum {
     c_emulate,
 } satisfier_cmd_t;
 
+#define C_SEEK_SET  0
+#define C_SEEK_CUR  1
+#define C_SEEK_END  2
+
 // CD image descriptor
 typedef struct {
     uint8_t number;              // track number, 1-99. 100, 101, 102 correspond to 0xa0, 0xa1, 0xa2 entries.

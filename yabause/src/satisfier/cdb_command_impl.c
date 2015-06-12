@@ -95,6 +95,7 @@ int cdb_command(void) {
     static uint8_t lfname[256];
     static FF_DIR dir;
     static s_stat_t *sst;
+    static int32_t offset;
 
     int cmd;
     setup_cmd();
@@ -139,7 +140,20 @@ int cdb_command(void) {
         case c_seek:
             if (!f)
                 goto fail;
-            result = f_lseek(f, get_length());
+            offset = get_length();
+            switch (cdb_buf[1]) {
+                case C_SEEK_SET:
+                    result = f_lseek(f, offset);
+                    break;
+                case C_SEEK_CUR:
+                    result = f_lseek(f, offset + f_tell(f));
+                    break;
+                case C_SEEK_END:
+                    result = f_lseek(f, offset + f_size(f));
+                    break;
+                default:
+                    result = FR_INVALID_PARAMETER;
+            }
             set_length(f_tell(f));
             set_status(result);
             break;
