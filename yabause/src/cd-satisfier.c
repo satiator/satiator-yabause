@@ -21,6 +21,7 @@
 #include "cdbase.h"
 #include "debug.h"
 #include "satisfier.h"
+#include "satisfier/ff.h"
 #include <stddef.h>
 
 // set externally by the CDB command

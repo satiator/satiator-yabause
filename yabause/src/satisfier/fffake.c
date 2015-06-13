@@ -32,6 +32,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include "../satisfier.h"
+#include "ff.h"
 
 static int cwd_fd;
 static char *cwd;

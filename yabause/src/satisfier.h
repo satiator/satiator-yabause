@@ -26,10 +26,6 @@
 
 #include <stdint.h>
 
-// FatFS config and prototypes
-// avoid name collision between dirent.h and ff.h
-#include "satisfier/ff.h"
-
 typedef enum {
     c_get_status = 0x90,
     c_write_buffer,

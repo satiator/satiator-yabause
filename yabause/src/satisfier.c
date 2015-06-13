@@ -39,6 +39,7 @@
 
 #include "cs2.h"
 #include "satisfier.h"
+#include "satisfier/ff.h"
 #include "debug.h"
 
 // Glue to allow using the raw Satisfier source code for best compatibility
