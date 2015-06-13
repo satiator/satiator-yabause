@@ -34,7 +34,9 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
-static int root_fd;
+static int cwd_fd;
+static char *cwd;
+static char *root_path;
 
 #define FD (*(int*)fp)
 #define FD_GOOD (FD >= 0)
@@ -79,7 +81,7 @@ FRESULT f_open (FIL* fp, const TCHAR* path, BYTE mode) {
         flags |= O_CREAT;
 
     errno = 0;
-    int fd = openat(root_fd, path, flags, 0666);
+    int fd = openat(cwd_fd, path, flags, 0666);
     FD = fd;
 
     if (FD_GOOD) {
@@ -139,7 +141,7 @@ FRESULT f_sync (FIL* fp) {
 #define DIRPTR (*(DIR**)dp)
 FRESULT f_opendir (FF_DIR* dp, const TCHAR* path) {
     errno = 0;
-    int fd = openat(root_fd, path, O_RDONLY|O_DIRECTORY);
+    int fd = openat(cwd_fd, path, O_RDONLY|O_DIRECTORY);
     DIRPTR = fdopendir(fd);
     if (DIRPTR)
         return FR_OK;
@@ -160,6 +162,11 @@ FRESULT f_readdir (FF_DIR* dp, FILINFO* fno) {
         rewinddir(DIRPTR);
     } else {
         struct dirent *d = readdir(DIRPTR);
+
+        // Don't return .. in the root
+        if (d && !strcmp(cwd, root_path) && !strcmp(d->d_name, ".."))
+            return f_readdir(dp, fno);
+
         if (d) {
             f_stat(d->d_name, fno);
         } else {
@@ -172,26 +179,26 @@ FRESULT f_readdir (FF_DIR* dp, FILINFO* fno) {
 }
 FRESULT f_mkdir (const TCHAR* path) {
     errno = 0;
-    if (!mkdirat(root_fd, path, 0777))
+    if (!mkdirat(cwd_fd, path, 0777))
         return F_OK;
     return errno_status();
 }
 FRESULT f_unlink (const TCHAR* path) {
     errno = 0;
-    if (!unlinkat(root_fd, path, 0))
+    if (!unlinkat(cwd_fd, path, 0))
         return F_OK;
     return errno_status();
 }
 FRESULT f_rename (const TCHAR* path_old, const TCHAR* path_new) {
     errno = 0;
-    if (!renameat(root_fd, path_old, root_fd, path_new))
+    if (!renameat(cwd_fd, path_old, cwd_fd, path_new))
         return F_OK;
     return errno_status();
 }
 FRESULT f_stat (const TCHAR* path, FILINFO* fno) {
     struct stat st;
     errno = 0;
-    if (fstatat(root_fd, path, &st, 0))
+    if (fstatat(cwd_fd, path, &st, 0))
         return errno_status();
 
     fno->fsize = st.st_size;    // will overflow if >4gb
@@ -206,8 +213,10 @@ FRESULT f_stat (const TCHAR* path, FILINFO* fno) {
     return FR_OK;
 }
 FRESULT f_mount (FATFS* fs, const TCHAR* path, BYTE opt) {
-    root_fd = open(path, O_RDONLY | O_DIRECTORY);
-    if (root_fd < 0) {
+    cwd_fd = open(path, O_RDONLY | O_DIRECTORY);
+    root_path = strdup(path);
+    cwd = strdup(path);
+    if (cwd_fd < 0) {
         perror("open");
         return FR_NOT_READY;
     } else {
@@ -215,20 +224,33 @@ FRESULT f_mount (FATFS* fs, const TCHAR* path, BYTE opt) {
     }
 }
 FRESULT f_chdir(const TCHAR* path) {
-    int fd = openat(root_fd, path, O_RDONLY | O_DIRECTORY);
+    char newwd[PATH_MAX+1];
+    char *newpath;
+    if (path[0] == "/")
+        asprintf(&newpath, "%s/%s", root_path, path);
+    else
+        asprintf(&newpath, "%s/%s", cwd, path);
+    realpath(newpath, newwd);
+    free(newpath);
+
+    if (strncmp(root_path, newwd, strlen(root_path)))   // don't allow traversal past the root
+        return FR_INVALID_PARAMETER;
+
+    int fd = open(newwd, O_RDONLY | O_DIRECTORY);
     if (fd < 0) {
         perror("open");
         return errno_status();
     } else {
-        close(root_fd);
-        root_fd = fd;
+        close(cwd_fd);
+        cwd_fd = fd;
+        free(cwd);
+        cwd = strdup(newwd);
         return FR_OK;
     }
 }
 
 FRESULT f_getcwd(TCHAR* path, UINT len) {
-    // XXX stub
-    strcpy(path, "XXX");
+    snprintf(path, len, "%s/", cwd + strlen(root_path));
 }
 
 FRESULT f_mkfs (const TCHAR* path, BYTE sfd, UINT au) {
