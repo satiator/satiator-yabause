@@ -93,7 +93,7 @@ int cdb_command(void) {
     static FIL biosfp;
     static FILINFO stat;
     static uint8_t lfname[256];
-    static FF_DIR dir;
+    static DIR dir;
     static s_stat_t *sst;
     static int32_t offset;
 

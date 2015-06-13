@@ -21,11 +21,9 @@
     \brief HLE of FatFS access to files & directories
 */
 
-// avoid name collision with DIR
-#define DIR FF_DIR
-#include "ff.h"
-#undef DIR
+#define DIR UNIX_DIR
 #include <dirent.h>
+#undef DIR
 #include <stdio.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -33,6 +31,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include "../satisfier.h"
 
 static int cwd_fd;
 static char *cwd;
@@ -138,8 +137,8 @@ FRESULT f_sync (FIL* fp) {
     return FR_OK;
 }
 
-#define DIRPTR (*(DIR**)dp)
-FRESULT f_opendir (FF_DIR* dp, const TCHAR* path) {
+#define DIRPTR (*(UNIX_DIR**)dp)
+FRESULT f_opendir (DIR* dp, const TCHAR* path) {
     errno = 0;
     int fd = openat(cwd_fd, path, O_RDONLY|O_DIRECTORY);
     DIRPTR = fdopendir(fd);
@@ -148,14 +147,14 @@ FRESULT f_opendir (FF_DIR* dp, const TCHAR* path) {
     else
         return errno_status();
 }
-FRESULT f_closedir (FF_DIR* dp) {
+FRESULT f_closedir (DIR* dp) {
     if (!DIRPTR)
         return FR_INVALID_OBJECT;
     closedir(DIRPTR);
     DIRPTR = NULL;
     return F_OK;
 }
-FRESULT f_readdir (FF_DIR* dp, FILINFO* fno) {
+FRESULT f_readdir (DIR* dp, FILINFO* fno) {
     if (!DIRPTR)
         return FR_INVALID_OBJECT;
     if (!fno) {

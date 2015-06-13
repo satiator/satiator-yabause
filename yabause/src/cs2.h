@@ -24,7 +24,6 @@
 #include "memory.h"
 #include "cdbase.h"
 #include "cs0.h"
-#include "satisfier.h"
 
 #define MAX_BLOCKS      200
 #define MAX_SELECTORS   24
@@ -136,6 +135,15 @@ typedef struct
    u16 CR4;
    u16 MPEGRGB;
 } blockregs_struct;
+
+typedef struct
+{
+   const char *basedir;
+   int active;
+   int dma_remain;
+   uint16_t *dma_buf;
+} satisfier_struct;
+
 
 typedef struct {
   blockregs_struct reg;

@@ -24,21 +24,11 @@
 #ifndef _SATISFIER_H
 #define _SATISFIER_H
 
-// FatFS config and prototypes
-// FatFS uses a type named DIR, which conflicts with dirent.h
-#define DIR FF_DIR
-#include "satisfier/ff.h"
-#undef DIR
+#include <stdint.h>
 
-// emulated hardware state struct
-typedef struct
-{
-   const char *basedir;
-   FATFS fatfs;
-   int active;
-   int dma_remain;
-   u16 *dma_buf;
-} satisfier_struct;
+// FatFS config and prototypes
+// avoid name collision between dirent.h and ff.h
+#include "satisfier/ff.h"
 
 typedef enum {
     c_get_status = 0x90,

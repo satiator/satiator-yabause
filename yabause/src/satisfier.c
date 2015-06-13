@@ -151,7 +151,7 @@ int SatisfierInit(Cs2 *Cs2Area, const char *basedir) {
     satisfier = sat;
     sat->basedir = basedir;
     sat->active = 1;  // XXX should be switchable
-    if (f_mount(&sat->fatfs, sat->basedir, 1) != FR_OK) {
+    if (f_mount(NULL, sat->basedir, 1) != FR_OK) {
         SATISLOG("failed to open directory '%s'\n", basedir);
         return -1;
     }
