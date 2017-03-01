@@ -62,9 +62,6 @@ void start_emulation(const char *filename) {
         SATISLOG("Failed to open CD descriptor, aborting drive emulation attempt\n");
         return;
     }
-
-    // Command interface is disabled on successful emulation start
-    satisfier->active = 0;
 }
 
 #include "satisfier/cdb_command_impl.c"
@@ -72,8 +69,31 @@ void start_emulation(const char *filename) {
 int SatisfierExecute(Cs2 * Cs2Area, u16 instruction) {
     u16 len;
     satisfier_struct *sat = Cs2Area->satisfier;
+
+    // knock sequence
+    if (Cs2Area->reg.CR1 == 0xe000 &&
+        Cs2Area->reg.CR2 == 0x0000 &&
+        Cs2Area->reg.CR3 == 0x00c1 &&
+        Cs2Area->reg.CR4 == 0x05e7) {
+        printf("KNOCK: active\n");
+        sat->active = 1;
+        Cs2Area->reg.HIRQ |= CDB_HIRQ_CMOK | CDB_HIRQ_EFLS;
+        return 0;
+    }
+
     if (!sat || !sat->active)
         return -1;
+
+    // knock sequence
+    if (Cs2Area->reg.CR1 == 0x9300 &&
+        Cs2Area->reg.CR2 == 0x0001 &&
+        Cs2Area->reg.CR3 == 0x0000 &&
+        Cs2Area->reg.CR4 == 0x0000) {
+        sat->active = 0;
+        printf("KNOCK: inactive\n");
+        Cs2Area->reg.HIRQ |= CDB_HIRQ_CMOK | CDB_HIRQ_MPED;
+        return 0;
+    }
 
     switch (instruction) {
         // I/O glue commands
@@ -151,7 +171,7 @@ int SatisfierInit(Cs2 *Cs2Area, const char *basedir) {
     Cs2Area->satisfier = sat;
     satisfier = sat;
     sat->basedir = basedir;
-    sat->active = 1;  // XXX should be switchable
+    sat->active = 0;
     if (f_mount(NULL, sat->basedir, 1) != FR_OK) {
         SATISLOG("failed to open directory '%s'\n", basedir);
         return -1;
