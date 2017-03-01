@@ -1421,6 +1421,9 @@ void Cs2InitializeCDSystem(void) {
      Cs2Area->FAD = 150;
   }
 
+  if (Cs2Area->reg.CR2 = 0x0001)    // standby time
+      Cs2Area->status = CDB_STAT_STANDBY;
+
   if (initflag & 0x1)
   {
      // Reset CD block software
