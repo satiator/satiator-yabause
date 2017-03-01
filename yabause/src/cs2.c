@@ -415,8 +415,8 @@ void FASTCALL Cs2WriteLong(u32 addr, u32 val) {
    if ((addr & 0xfffff) == 0x18000) {
       if (Cs2Area->satisfier && Cs2Area->satisfier->dma_remain) {
          Cs2Area->satisfier->dma_remain -= 2;
-         *Cs2Area->satisfier->dma_buf++ == ntohs(val>>16);
-         *Cs2Area->satisfier->dma_buf++ == ntohs(val);
+         *Cs2Area->satisfier->dma_buf++ = ntohs(val>>16);
+         *Cs2Area->satisfier->dma_buf++ = ntohs(val);
          SATISLOG("DMAWL %08X\n", val);
          return;
       }
