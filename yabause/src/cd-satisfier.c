@@ -65,11 +65,11 @@ int SatisfierCDOpenDescriptor(const char *name) {
             break;
         if (track.number > 102)
             return -2;
-        trackmap[track.number-1].toc_ent = track.toc_ent;
+        trackmap[track.number-1].toc_ent = ntohl(track.toc_ent);
         trackmap[track.number-1].desc_offset = f_tell(&cdb_descfile) - offsetof(satisfier_trackdesc_t, name);
         f_lseek(&cdb_descfile, f_tell(&cdb_descfile) + track.namelen);
 
-        SATISLOG("Track %d at FAD %X\n", track.number, track.toc_ent);
+        SATISLOG("Track %d at FAD %X\n", track.number, trackmap[track.number-1].toc_ent);
     }
 
     next_fad = -1;
@@ -184,6 +184,9 @@ static void seek_to_fad(u32 FAD) {
         f_lseek(&cdb_descfile, trackmap[track].desc_offset);
         UINT nread;
         f_read(&cdb_descfile, &cur_track, offsetof(satisfier_trackdesc_t, name), &nread);
+        cur_track.toc_ent = ntohl(cur_track.toc_ent);
+        cur_track.file_offset = ntohl(cur_track.file_offset);
+
         switch (cur_track.file_secsize) {
             case SEC_2048:
                 sec_size = 2048;
