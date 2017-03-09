@@ -38,6 +38,8 @@ static struct {
 static int next_fad, track_start_fad, track_end_fad, sec_size;
 static satisfier_trackdesc_t cur_track;
 
+static void seek_to_fad(u32 FAD);
+
 int SatisfierCDCloseDescriptor(void) {
     int i;
     if (!active)
@@ -73,7 +75,7 @@ int SatisfierCDOpenDescriptor(const char *name) {
     }
 
     next_fad = -1;
-    active = 1;
+    seek_to_fad(150);
 
     return 0;
 }
@@ -159,6 +161,14 @@ static int SatisfierCDGetStatus(void) {
     return 0;
 }
 
+void start_emulation(const char *filename) {
+    if (SatisfierCDOpenDescriptor(filename)) {
+        SATISLOG("Failed to open CD descriptor '%s', aborting drive emulation attempt\n", filename);
+        return;
+    }
+}
+
+
 static void seek_to_fad(u32 FAD) {
     int ret;
     SATISLOG("Seek: %X\n", FAD);
@@ -166,7 +176,8 @@ static void seek_to_fad(u32 FAD) {
         FAD < 150)                                      // leadin
         return;
 
-    if (FAD < track_start_fad ||
+    if (!active ||
+        FAD < track_start_fad ||
         FAD >= track_end_fad) { // change track
         int track;
         for (track=0; track<100; track++) {
@@ -207,11 +218,14 @@ static void seek_to_fad(u32 FAD) {
         char filename[257];
         f_read(&cdb_descfile, filename, cur_track.namelen, &nread);
         filename[cur_track.namelen] = 0;
-        f_close(&trackfile);
+        if (active)
+            f_close(&trackfile);
+        active = 0;
         if (f_open(&trackfile, filename, FA_READ)) {
             SATISLOG("Couldn't open track file '%s'\n", filename);
             return;
         }
+        active = 1;
 
         SATISLOG("New track. FAD range %X-%X\n", track_start_fad, track_end_fad);
     }

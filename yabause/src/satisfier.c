@@ -54,15 +54,7 @@
     cmd = cdb_buf[0] >> 8;  \
 } while(0)
 
-int SatisfierCDOpenDescriptor(const char *name);
 static satisfier_struct *satisfier = NULL;
-
-void start_emulation(const char *filename) {
-    if (SatisfierCDOpenDescriptor(filename)) {
-        SATISLOG("Failed to open CD descriptor, aborting drive emulation attempt\n");
-        return;
-    }
-}
 
 #include "satisfier/cdb_command_impl.c"
 

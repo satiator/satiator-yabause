@@ -96,7 +96,10 @@ FRESULT f_open (FIL* fp, const TCHAR* path, BYTE mode) {
 FRESULT f_close (FIL* fp) {
     if (!FD_GOOD)
         return FR_INVALID_OBJECT;
-    
+
+    if (FD == 0)    // uninit mem. bad!
+        abort();
+
     errno = 0;
     close(FD);
     return errno_status();
@@ -106,6 +109,12 @@ FRESULT f_read (FIL* fp, void* buff, UINT btr, UINT* br) {
         return FR_INVALID_OBJECT;
 
     *br = read(FD, buff, btr);
+
+    if (*br < 0) {
+        perror("read");
+        return FR_DISK_ERR;
+    }
+
     fp->fptr += *br;
 
     return FR_OK;
