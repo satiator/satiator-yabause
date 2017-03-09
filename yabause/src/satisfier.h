@@ -59,6 +59,7 @@ typedef enum {
 typedef struct {
     uint8_t number;              // track number, 1-99. 100, 101, 102 correspond to 0xa0, 0xa1, 0xa2 entries.
     uint32_t toc_ent;           // TOC entry as read by Saturn. FAD, addr, ctrl.
+    uint16_t pregap;            // sectors of pregap (usually 150 or 0, first track must be 150)
     uint32_t file_offset;       // byte offset in track file of start of track data
     uint8_t file_secsize;       // sector size (enum)
     uint8_t namelen;           // length of following name (no terminating null)
