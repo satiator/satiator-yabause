@@ -8,7 +8,8 @@
 
 
 // file handles {{{
-static FIL files[16];
+#define MAX_FILES 16
+static FIL files[MAX_FILES];
 static uint16_t files_open = 0;
 
 static FIL* file_for_handle(int8_t handle) {
@@ -35,6 +36,17 @@ static void free_handle(int8_t handle) {
     handle &= 0xf;
     files_open &= ~(1<<handle);
 }
+
+// ensure any open files are flushed to disk && close them
+void cdb_unmount(void) {
+    int i;
+    for (i=0; i<MAX_FILES; i++) {
+        FIL *f = file_for_handle(i);
+        if (f)
+            f_close(f);
+        free_handle(i);
+    }
+}
 // }}}
 
 typedef struct {
@@ -46,8 +58,8 @@ typedef struct {
 
 static uint8_t buffer[2049];
 uint16_t cdb_buf[5];
-extern FIL cdb_descfile;
-static int cdb_descfile_active = 0;
+
+FRESULT reader_desc_load(const char *filename);
 
 static uint32_t fat_time = 0;
 DWORD get_fattime(void) {
@@ -95,6 +107,7 @@ int cdb_command(void) {
     static FILINFO stat;
     static uint8_t lfname[256];
     static DIR dir;
+    static int diropen = 0;
     static s_stat_t *sst;
     static int32_t offset;
 
@@ -141,6 +154,7 @@ int cdb_command(void) {
         case c_seek:
             if (!f)
                 goto fail;
+            f_sync(f);
             offset = get_length();
             switch (cdb_buf[1]) {
                 case C_SEEK_SET:
@@ -164,7 +178,7 @@ int cdb_command(void) {
             handle = alloc_handle();
             if (handle < 0) {
                 set_status(FR_TOO_MANY_OPEN_FILES);
-                return;
+                goto fail;
             }
             f = file_for_handle(handle);
             result = f_open(f, buffer, cdb_buf[1] & 0xff);
@@ -228,7 +242,9 @@ return_stat:
             } else {
                 strcpy(sst->name, stat.fname);
             }
-            set_length(9 + strlen(sst->name));
+            length = 9 + strlen(sst->name);
+            set_length(length);
+            write_buf(length);
             break;
 
         case c_rename:
@@ -251,9 +267,15 @@ return_stat:
             break;
 
         case c_opendir:
+            if (diropen) {
+                f_closedir(&dir);
+                diropen = 0;
+            }
             read_filename();
             result = f_opendir(&dir, buffer);
             set_status(result);
+            if (!result)
+                diropen = 1;
             break;
 
         case c_chdir:
@@ -261,7 +283,9 @@ return_stat:
             result = f_chdir(buffer);
             set_status(result);
             f_getcwd(buffer, sizeof(buffer));
-            set_length(strlen(buffer));
+            length = strlen(buffer);
+            set_length(length);
+            write_buf(length);
             break;
 
 #if _USE_MKFS
@@ -280,19 +304,9 @@ return_stat:
             break;
 
         case c_emulate:
-            if (cdb_descfile_active) {
-                f_close(&cdb_descfile);
-                cdb_descfile_active = 0;
-            }
             read_filename();
-            result = f_open(&cdb_descfile, buffer, FA_READ);
+            result = reader_desc_load(buffer);
             set_status(result);
-            cdb_buf[2] = 0x5555;
-            cdb_buf[3] = 0xaaaa;
-            if (result == FR_OK) {
-                start_emulation(buffer);
-                cdb_descfile_active = 1;
-            }
             break;
 
         default:    // unknown cmd

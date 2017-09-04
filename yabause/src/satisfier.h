@@ -57,17 +57,19 @@ typedef enum {
 
 // CD image descriptor
 typedef struct {
-    uint8_t number;              // track number, 1-99. 100, 101, 102 correspond to 0xa0, 0xa1, 0xa2 entries.
-    uint32_t toc_ent;           // TOC entry as read by Saturn. FAD, addr, ctrl.
-    uint16_t pregap;            // sectors of pregap (usually 150 or 0, first track must be 150)
-    uint32_t file_offset;       // byte offset in track file of start of track data
-    uint8_t file_secsize;       // sector size (enum)
-    uint8_t namelen;           // length of following name (no terminating null)
-    char name[];
-} __attribute__((packed)) satisfier_trackdesc_t;
+    uint32_t start;             // FAD
+    uint32_t length;            // sectors
 
-#define SEC_2048    0
-#define SEC_2352    1
-#define SEC_2448    2
+    uint32_t file_offset;       // byte offset within file where segment data starts
+    uint32_t filename_offset;   // byte offset within descfile where filename is. zero for no data
+
+    uint16_t flags;             // future proofing
+    uint16_t secsize;           // 2048 or 2352
+
+    uint8_t track;              // 1-99 for disc tracks.
+    uint8_t index;              // typically 0 for pregap, 1 for track, others not used. track MSF counts backwards in pregap
+    uint8_t q_mode;             // typically 0x41 (data) or 0x01 (audio)
+
+} __attribute__((packed)) seg_desc_t;
 
 #endif // _SATISFIER_H

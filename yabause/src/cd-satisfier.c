@@ -23,59 +23,74 @@
 #include "satisfier.h"
 #include "satisfier/ff.h"
 #include <stddef.h>
-
-// set externally by the CDB command
-FIL cdb_descfile;
-
-static FIL trackfile;
-static int active = 0;
-static struct {
-    uint32_t toc_ent;
-    uint32_t desc_offset;
-} trackmap[102];
-#define FAD_MASK 0xffffff
-
-static int next_fad, track_start_fad, track_end_fad, sec_size;
-static satisfier_trackdesc_t cur_track;
+#include <stdlib.h>
 
 static void seek_to_fad(u32 FAD);
 
-int SatisfierCDCloseDescriptor(void) {
-    int i;
-    if (!active)
-        return;
+static seg_desc_t *segs;
+static uint16_t nsegs = 0;
 
-    f_close(&trackfile);
-    active = 0;
+static seg_desc_t cur_seg;
+
+static int active = 0;
+static FIL descfile;
+static FIL trackfile;
+
+static void add_leadin_leadout(int nsegs, seg_desc_t *segs) {
+    // add leadin at start
+    seg_desc_t *leadin = &segs[0];
+    leadin->length = 150;
+    leadin->track = 1;
+    leadin->q_mode = 0x41;  // always a data track
+
+    // add leadout at end
+    seg_desc_t *leadout = &segs[nsegs-1];
+    leadout->start = segs[nsegs-2].start + segs[nsegs-2].length;
+    leadout->length = 0xffffffff;
+    leadout->track = 102;
+    leadout->q_mode = 0x01; // always audio
+}
+
+int SatisfierCDCloseDescriptor(void) {
+    if (nsegs) {
+        free(segs);
+        nsegs = 0;
+    }
+    if (active) {
+        f_close(&trackfile);
+        active = 0;
+    }
 }
 
 int SatisfierCDOpenDescriptor(const char *name) {
     int ret;
     SatisfierCDCloseDescriptor();
-    memset(trackmap, 0xff, sizeof(trackmap));
+
+    SATISLOG("Opening desc %s\n", name);
 
     UINT nread;
-    satisfier_trackdesc_t track;
-    while (1) {
-        ret = f_read(&cdb_descfile, &track, offsetof(satisfier_trackdesc_t, name), &nread);
-        if (ret != FR_OK)
-            return ret;
-        if (nread < offsetof(satisfier_trackdesc_t, name))
-            return -1;
 
-        if (!track.number)  // last track marker
-            break;
-        if (track.number > 102)
-            return -2;
-        trackmap[track.number-1].toc_ent = ntohl(track.toc_ent);
-        trackmap[track.number-1].desc_offset = f_tell(&cdb_descfile) - offsetof(satisfier_trackdesc_t, name);
-        f_lseek(&cdb_descfile, f_tell(&cdb_descfile) + track.namelen);
+    ret = f_open(&descfile, name, FA_READ);
+    if (ret != FR_OK)
+        return ret;
 
-        SATISLOG("Track %d at FAD %X\n", track.number, trackmap[track.number-1].toc_ent);
-    }
+    ret = f_read(&descfile, &nsegs, 2, &nread);
+    if (ret != FR_OK)
+        return ret;
 
-    next_fad = -1;
-    seek_to_fad(150);
+    nsegs += 2;
+    segs = calloc(nsegs, sizeof(seg_desc_t));
+
+    ret = f_read(&descfile, &segs[1], nsegs*sizeof(seg_desc_t), &nread);
+    if (ret != FR_OK)
+        return ret;
+
+    add_leadin_leadout(nsegs, segs);
+
+    for (int i=0; i<nsegs; i++)
+        SATISLOG("seg %d %02x %x-%x\n", i, segs[i].q_mode, segs[i].start, segs[i].length);
+
+    cur_seg = segs[0];
 
     return 0;
 }
@@ -100,11 +115,22 @@ CDInterface SatisfierCD = {
 
 static int SatisfierCDInit(const char * cdrom_name) {
     // set up enough CD to trigger MPEG boot into the menu
-    memset(trackmap, 0xff, sizeof(trackmap));
-    trackmap[  0].toc_ent = 0x41000096;
-    trackmap[ 99].toc_ent = 0x41010000;
-    trackmap[100].toc_ent = 0x41010000;
-    trackmap[101].toc_ent = 0x0100ffff;
+    if (nsegs)
+        free(segs);
+
+    nsegs = 3;
+    segs = calloc(3, sizeof(seg_desc_t));
+
+    // just one data track
+    seg_desc_t *seg = &segs[1];
+    seg->start = 150;
+    seg->length = 1000;
+    seg->track = 1;
+    seg->index = 1;
+    seg->q_mode = 0x41;
+
+    add_leadin_leadout(nsegs, segs);
+
 	return 0;
 }
 
@@ -113,9 +139,23 @@ static void SatisfierCDDeInit(void) {
 
 static s32 SatisfierCDReadTOC(u32 * TOC)
 {
-    int i;
-    for (i=0; i<102; i++)
-        TOC[i] = trackmap[i].toc_ent;
+    memset(TOC, 0xff, 102*4);
+
+    int ntracks = 0;
+
+    for (int i=0; i<nsegs; i++) {
+        seg_desc_t *seg = &segs[i];
+        if ((seg->index == 1) ||    // track start
+            (seg->track == 102))    // leadout
+            TOC[seg->track - 1] = (seg->q_mode << 24) | seg->start;
+
+        if (seg->track < 100 && seg->track > ntracks)
+            ntracks = seg->track;
+    }
+
+    TOC[99] = 0x41010000;   // first track = 1
+    TOC[100] = 0x01000000 | (ntracks << 16);    // last track (audio assumed)
+
     return 102*4;
 	// The format of TOC is as follows:
 	// TOC[0] - TOC[98] are meant for tracks 1-99. Each entry has the
@@ -152,111 +192,84 @@ static s32 SatisfierCDReadTOC(u32 * TOC)
 	// Special Note: To convert from LBA/LSN to FAD, add 150.
 }
 
+static int open_count = 0;
+
 static int SatisfierCDGetStatus(void) {
 	// 0 - CD Present, disc spinning
 	// 1 - CD Present, disc not spinning
 	// 2 - CD not present
 	// 3 - Tray open
+    if (open_count) {
+        open_count--;
+        printf("open\n");
+        return 3;
+    }
 
     return 0;
 }
 
-void start_emulation(const char *filename) {
+void reader_desc_load(const char *filename) {
+    printf("Load: %s\n", filename);
     if (SatisfierCDOpenDescriptor(filename)) {
         SATISLOG("Failed to open CD descriptor '%s', aborting drive emulation attempt\n", filename);
         return;
     }
+    open_count = 1;    // pop the "lid" for a while
 }
 
 
-static void seek_to_fad(u32 FAD) {
-    int ret;
-    SATISLOG("Seek: %X\n", FAD);
-    if (FAD >= (trackmap[101].toc_ent & FAD_MASK) ||    // leadout
-        FAD < 150)                                      // leadin
-        return;
-
-    if (!active ||
-        FAD < track_start_fad ||
-        FAD >= track_end_fad) { // change track
-        int track;
-        for (track=0; track<100; track++) {
-            if ((trackmap[track].toc_ent & FAD_MASK) <= FAD)
-                break;
-        }
-        if (track == 100) {
-            SATISLOG("Couldn't find a track with FAD 0x%X\n", FAD);
-            return;
-        }
-        SATISLOG("Track desc off %X\n", trackmap[track].desc_offset);
-        track_start_fad = trackmap[track].toc_ent & FAD_MASK;
-        track_end_fad = trackmap[track+1].toc_ent & FAD_MASK;
-
-        f_lseek(&cdb_descfile, trackmap[track].desc_offset);
-        UINT nread;
-        f_read(&cdb_descfile, &cur_track, offsetof(satisfier_trackdesc_t, name), &nread);
-        cur_track.toc_ent = ntohl(cur_track.toc_ent);
-        cur_track.file_offset = ntohl(cur_track.file_offset);
-
-        switch (cur_track.file_secsize) {
-            case SEC_2048:
-                sec_size = 2048;
-                break;
-            case SEC_2352:
-                sec_size = 2352;
-                break;
-            case SEC_2448:
-                sec_size = 2448;
-                break;
-            default:
-                SATISLOG("Bad sector size field 0x%02X in cdb_descfile\n", cur_track.file_secsize);
-                return;
-        }
-
-        SATISLOG("Track %d secsz %d tocent %X namelen %d\n", cur_track.number, sec_size, cur_track.toc_ent, cur_track.namelen);
-
-        char filename[257];
-        f_read(&cdb_descfile, filename, cur_track.namelen, &nread);
-        filename[cur_track.namelen] = 0;
-        if (active)
-            f_close(&trackfile);
-        active = 0;
-        if (f_open(&trackfile, filename, FA_READ)) {
-            SATISLOG("Couldn't open track file '%s'\n", filename);
-            return;
-        }
-        active = 1;
-
-        SATISLOG("New track. FAD range %X-%X\n", track_start_fad, track_end_fad);
+static void change_seg(uint32_t fad) {
+    for (int i=0; i<nsegs; i++) {
+        cur_seg = segs[i];
+        SATISLOG("seg: %d-%d\n", cur_seg.start, cur_seg.length);
+        if (fad >= cur_seg.start &&
+            fad < cur_seg.start + cur_seg.length)
+            break;
     }
 
-    int target = (FAD - track_start_fad) * sec_size + cur_track.file_offset;
-    ret = f_lseek(&trackfile, target);
-    if (ret)
-        SATISLOG("seek to %X failed: %X\n", target, ret);
-    SATISLOG("sought to %X\n", f_tell(&trackfile));
-    next_fad = FAD;
+    if (active) {
+        f_close(&trackfile);
+        active = 0;
+    }
+
+    if (cur_seg.filename_offset) {
+        f_lseek(&descfile, cur_seg.filename_offset);
+        uint8_t filename_len;
+        UINT nread;
+        f_read(&descfile, &filename_len, 1, &nread);
+        char filename[filename_len + 1];
+        f_read(&descfile, filename, filename_len, &nread);
+        filename[filename_len] = '\0';
+
+        int ret = f_open(&trackfile, filename, FA_READ);
+        if (ret != FR_OK)
+            printf("ERROR - couldn't open '%s'\n", filename);
+        else
+            active = 1;
+    }
 }
 
 static const s8 syncHdr[12] = { 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00 };
 static int SatisfierCDReadSectorFAD(u32 FAD, void *buffer) {
     memset(buffer, 0, 2352);
-    if (!active)
-        return 1;
     SATISLOG("Read request %X\n", FAD);
-    
-    if (FAD != next_fad) // seek (as it were)
-        seek_to_fad(FAD);
+
+    if ((FAD < cur_seg.start) ||
+        (FAD >= (cur_seg.start + cur_seg.length)))
+        change_seg(FAD);
+
+    if (!active)    // ???
+        return 1;
+    f_lseek(&trackfile, cur_seg.file_offset + (FAD - cur_seg.start) * cur_seg.secsize);
 
     UINT nread;
     uint8_t *buf = buffer;
-    if (sec_size==2048) {
+    if (cur_seg.secsize==2048) {
         // the Mode1 header needs to be set too XXX
         memcpy(buf, syncHdr, 12);
         buf += 16;
     }
-    f_read(&trackfile, buf, sec_size, &nread);
-    next_fad++;
+    f_read(&trackfile, buf, cur_seg.secsize, &nread);
 
     SATISLOG("Read FAD %X - top %02X %02X %02X %02X\n", FAD, buf[0], buf[1], buf[2], buf[3]);
 

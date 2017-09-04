@@ -90,6 +90,7 @@ FRESULT f_open (FIL* fp, const TCHAR* path, BYTE mode) {
         return FR_OK;
     } else {
         perror("openat");
+        printf("Couldn't open '%s'\n", path);
         return errno_status();
     }
 }
