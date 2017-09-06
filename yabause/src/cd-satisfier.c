@@ -70,7 +70,7 @@ int SatisfierCDOpenDescriptor(const char *name) {
 
     UINT nread;
 
-    ret = f_open(&descfile, name, FA_READ);
+    ret = f_open(&descfile, name, FA_READ | FA_OPEN_EXISTING);
     if (ret != FR_OK)
         return ret;
 
@@ -81,7 +81,7 @@ int SatisfierCDOpenDescriptor(const char *name) {
     nsegs += 2;
     segs = calloc(nsegs, sizeof(seg_desc_t));
 
-    ret = f_read(&descfile, &segs[1], nsegs*sizeof(seg_desc_t), &nread);
+    ret = f_read(&descfile, &segs[1], (nsegs-2)*sizeof(seg_desc_t), &nread);
     if (ret != FR_OK)
         return ret;
 
@@ -241,7 +241,7 @@ static void change_seg(uint32_t fad) {
         f_read(&descfile, filename, filename_len, &nread);
         filename[filename_len] = '\0';
 
-        int ret = f_open(&trackfile, filename, FA_READ);
+        int ret = f_open(&trackfile, filename, FA_READ | FA_OPEN_EXISTING);
         if (ret != FR_OK)
             printf("ERROR - couldn't open '%s'\n", filename);
         else
